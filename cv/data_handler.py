@@ -1,6 +1,5 @@
 import os
 from pathlib import Path
-
 import numpy as np
 from sklearn.model_selection import KFold as KF, StratifiedKFold as SKF
 import cv2
@@ -8,38 +7,66 @@ from torch.utils.data import Dataset
 from .utils.chart import stacked_bar
 from copy import copy
 
+base = Dataset
 
-class TorchDataset(Dataset):
+class TorchDataset(base):
     def __init__(
         self,
         images=None,
         labels=None,
-        classes=None,
-        image_size=(256, 256),
-        color_mode=1,  # 1: 'color', '0': 'grey', '-1': 'unchanged'
         **kwargs
     ):
         super(TorchDataset, self).__init__()
         self.__dict__ = kwargs
         self.images = images
         self.labels = labels
-        self.classes = classes
-        self.image_size = image_size
-        self.color_mode = {1: "color", 0: "grey", -1: "unchanged"}.get(color_mode, color_mode)
 
     def __len__(self):
         return len(self.images)
 
     def __getitem__(self, index):
-        image = cv2.imread(self.images[index], flags={"color": cv2.IMREAD_COLOR,
-                                                      "grey": cv2.IMREAD_GRAYSCALE,
-                                                      "unchanged": cv2.IMREAD_UNCHANGED}[self.color_mode])
-        if self.image_size:
-            image = cv2.resize(image, dsize=self.image_size, interpolation=cv2.INTER_AREA)
-        if image.ndim == 2:
-            image = image[..., np.newaxis]
-        label = self.labels[index]
-        return {"image": image, "label": label}
+        return {"image": self.images[index], "label": self.labels[index]}
+
+
+class LoadImages:
+    def __init__(self, dataset, color_mode=1):
+        # color_mode 1: "color", 0: "grey", -1: "unchanged"
+        self.__dict__ = dataset.__dict__.copy()
+        self.dataset = dataset
+        self.color_mode = {1: "color", 0: "grey", -1: "unchanged"}.get(color_mode, color_mode)
+    
+    def __len__(self):
+        return len(self.images)
+
+    def __getitem__(self, index):
+        sample = self.dataset[index]
+        sample["image"] = cv2.imread(
+            sample["image"],
+            flags={
+                "color": cv2.IMREAD_COLOR,
+                "grey": cv2.IMREAD_GRAYSCALE,
+                "unchanged": cv2.IMREAD_UNCHANGED
+            }[self.color_mode]
+        )
+        if sample["image"].ndim == 2:
+            sample["image"] = sample["image"][..., np.newaxis]
+        return sample
+
+
+class ResizeImages:
+    def __init__(self, dataset, image_size, interpolation=cv2.INTER_LINEAR):
+        self.__dict__ = dataset.__dict__.copy()
+        self.dataset = dataset
+        self.image_size = image_size
+        self.interpolation = interpolation
+    
+    def __len__(self):
+        return len(self.images)
+
+    def __getitem__(self, index):
+        sample = self.dataset[index]
+        sample["image"] = cv2.resize(sample["image"], dsize=self.image_size, interpolation=self.interpolation)
+        return sample
 
 
 class OneHotLabels:
